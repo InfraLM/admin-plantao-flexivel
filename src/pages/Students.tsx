@@ -1,166 +1,179 @@
 import { useState, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-import { EditableCell } from '@/components/ui/EditableCell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MaskedInput } from '@/components/ui/MaskedInput';
-import { Switch } from '@/components/ui/switch';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { PageError } from '@/components/ui/ErrorMessage';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { useAlunos, useCreateAluno, useUpdateAlunoField, useDeleteAluno, useCreateFinanceiro } from '@/hooks/useApi';
-import { Aluno, VENDEDORES, PARCELAS_OPTIONS } from '@/types/clinic';
-import { generateId, unmaskCurrency, formatCurrency } from '@/lib/formatters';
-import { Plus, Search, Trash2, Edit2, GraduationCap } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, User, Calendar, TrendingUp, AlertCircle, CheckCircle2, XCircle, ChevronLeft, ChevronRight, MapPin, Heart, Check, Plus } from 'lucide-react';
+import { useAlunos, useTentativas, usePlantoes, useAfter, useUpdateAlunoField, useCreateAluno } from '@/hooks/useApi';
+import { PfAlunos } from '@/lib/database';
+
+const ITEMS_PER_PAGE = 20;
 
 export default function Students() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingAluno, setEditingAluno] = useState<Aluno | null>(null);
-  const [newAluno, setNewAluno] = useState<Partial<Aluno>>({
-    status: 'Em Onboarding',
-    vendedor: '',
-    valor_venda: '',
-    parcelas: '1',
-    pos_graduacao: false,
-  });
+  const [selectedAluno, setSelectedAluno] = useState<PfAlunos | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('name-asc');
 
   // API hooks
   const { data: alunos = [], isLoading, isError, refetch } = useAlunos();
-  const createAlunoMutation = useCreateAluno();
-  const updateFieldMutation = useUpdateAlunoField();
-  const deleteAlunoMutation = useDeleteAluno();
-  const createFinanceiroMutation = useCreateFinanceiro();
+  const createAluno = useCreateAluno();
 
-  // Local state for optimistic updates
-  const [localAlunos, setLocalAlunos] = useState<Aluno[]>([]);
-  
-  // Merge API data with local state
-  const mergedAlunos = useMemo(() => {
-    if (localAlunos.length > 0) return localAlunos;
-    return alunos;
-  }, [alunos, localAlunos]);
+  // Manual Registration State
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [newStudent, setNewStudent] = useState({
+    matricula: '',
+    tipoMatricula: 'SEI',
+    nome: '',
+    telefone: '',
+    email: '',
+    turma: '',
+    cidade: ''
+  });
 
-  // Filter alunos based on search
-  const filteredAlunos = useMemo(() => {
-    return mergedAlunos.filter(
-      (aluno) =>
-        aluno.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        aluno.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        aluno.cpf.includes(searchTerm)
-    );
-  }, [mergedAlunos, searchTerm]);
-
-  const handleUpdateField = (id: string, field: keyof Aluno, value: string | boolean) => {
-    // Optimistic update
-    setLocalAlunos((prev) => {
-      const base = prev.length > 0 ? prev : alunos;
-      return base.map((a) => (a.id === id ? { ...a, [field]: value } : a));
-    });
-    
-    // API call
-    updateFieldMutation.mutate({ id, field, value });
+  const handleRegisterChange = (field: string, value: string) => {
+    setNewStudent(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleAddAluno = () => {
-    const today = new Date();
-    const formattedDate = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-    
-    const valorVendaNumerico = unmaskCurrency(newAluno.valor_venda || '0');
-    
-    const aluno: Aluno = {
-      id: generateId(),
-      nome: newAluno.nome || '',
-      email: newAluno.email || '',
-      telefone: newAluno.telefone || '',
-      data_nascimento: newAluno.data_nascimento || '',
-      cpf: newAluno.cpf || '',
-      endereco: newAluno.endereco || '',
-      status: (newAluno.status as Aluno['status']) || 'Em Onboarding',
-      data_matricula: formattedDate,
-      observacoes: newAluno.observacoes || '',
-      vendedor: newAluno.vendedor || '',
-      valor_venda: valorVendaNumerico,
-      parcelas: newAluno.parcelas || '1',
-      pos_graduacao: newAluno.pos_graduacao || false,
+  const handleRegisterSubmit = async () => {
+    if (!newStudent.matricula || !newStudent.nome) {
+      // Basic validation
+      return;
+    }
+
+    // Default values as requested
+    const finalData = {
+      matricula: newStudent.matricula,
+      nome: newStudent.nome,
+      telefone: newStudent.telefone,
+      email: newStudent.email,
+      turma: newStudent.turma,
+      cidade: newStudent.cidade,
+      // Default fields
+      qtd_plantoes: 0,
+      parcelas_pagas: 0,
+      parcelas_atraso: 0,
+      parcelas_aberto: 0,
+      aulas_total_porcentagem: 0,
+      aulas_assistidas: 0,
+      dias_desde_primeira_aula: 0,
+      dias_desde_ultima_aula: 0,
+      tag: 'MANUAL', // Explicitly requested
+      criado_em: new Date().toLocaleDateString('pt-BR'), // dd/mm/aaaa
+      status_financeiro: 'INDEFINIDO', // Default fallback
+      id: null // Explicitly empty as requested
     };
+    
+    // Note: 'tipoMatricula' is collected but not stored strictly as a column per DDL, 
+    // effectively used for decision making only if needed, or discarded as per current schema limiting.
+    
+    try {
+      await createAluno.mutateAsync(finalData);
+      setIsRegisterOpen(false);
+      setNewStudent({
+        matricula: '',
+        tipoMatricula: 'SEI',
+        nome: '',
+        telefone: '',
+        email: '',
+        turma: '',
+        cidade: ''
+      });
+      refetch();
+    } catch (error) {
+      console.error("Failed to register student", error);
+    }
+  };
 
-    // Optimistic update
-    setLocalAlunos((prev) => {
-      const base = prev.length > 0 ? prev : alunos;
-      return [aluno, ...base];
-    });
+  // Filter and sort alunos
+  const filteredAndSortedAlunos = useMemo(() => {
+    let result = alunos.filter(
+      (aluno: PfAlunos) =>
+        (aluno.nome?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (aluno.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (aluno.matricula || '').includes(searchTerm)
+    );
 
-    // API call
-    createAlunoMutation.mutate(aluno);
-
-    // Create financial entry for the sale
-    if (parseFloat(valorVendaNumerico) > 0) {
-      createFinanceiroMutation.mutate({
-        categoria: 'Matrícula',
-        descricao: `Matrícula ${aluno.nome} - ${aluno.parcelas}x${aluno.pos_graduacao ? ' (Pós-Graduação)' : ''}`,
-        quantidade: '1',
-        valor_unitario: valorVendaNumerico,
-        valor_total: valorVendaNumerico,
-        tipo: 'Entrada',
-        data: formattedDate,
-        observacoes: `Vendedor: ${aluno.vendedor}`,
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      result = result.filter((aluno: PfAlunos) => {
+        const status = (aluno.status_financeiro || 'INDEFINIDO').toUpperCase();
+        return status === statusFilter;
       });
     }
 
-    setNewAluno({
-      status: 'Em Onboarding',
-      vendedor: '',
-      valor_venda: '',
-      parcelas: '1',
-      pos_graduacao: false,
+    // Apply sorting
+    result.sort((a: PfAlunos, b: PfAlunos) => {
+      switch (sortBy) {
+        case 'name-asc':
+          return (a.nome || '').localeCompare(b.nome || '');
+        case 'name-desc':
+          return (b.nome || '').localeCompare(a.nome || '');
+        case 'plantoes-asc':
+          return (a.qtd_plantoes || 0) - (b.qtd_plantoes || 0);
+        case 'plantoes-desc':
+          return (b.qtd_plantoes || 0) - (a.qtd_plantoes || 0);
+        case 'tentativas-asc':
+          return (a.qtd_tentativas || 0) - (b.qtd_tentativas || 0);
+        case 'tentativas-desc':
+          return (b.qtd_tentativas || 0) - (a.qtd_tentativas || 0);
+        case 'aulas-asc':
+          return (a.aulas_total_porcentagem || 0) - (b.aulas_total_porcentagem || 0);
+        case 'aulas-desc':
+          return (b.aulas_total_porcentagem || 0) - (a.aulas_total_porcentagem || 0);
+        default:
+          return 0;
+      }
     });
-    setIsDialogOpen(false);
+
+    return result;
+  }, [alunos, searchTerm, statusFilter, sortBy]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAndSortedAlunos.length / ITEMS_PER_PAGE);
+  const paginatedAlunos = filteredAndSortedAlunos.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // Reset to page 1 when filters change
+  useMemo(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, sortBy]);
+
+  const getStatusIcon = (status: string | null) => {
+    const normalizedStatus = (status || 'INDEFINIDO').toUpperCase();
+    if (normalizedStatus === 'ADIMPLENTE') {
+      return <CheckCircle2 className="h-4 w-4 text-success" />;
+    }
+    if (normalizedStatus === 'INADIMPLENTE') {
+      return <XCircle className="h-4 w-4 text-destructive" />;
+    }
+    return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
   };
 
-  const handleEditAluno = () => {
-    if (!editingAluno) return;
-    
-    setLocalAlunos((prev) => {
-      const base = prev.length > 0 ? prev : alunos;
-      return base.map((a) => (a.id === editingAluno.id ? editingAluno : a));
-    });
-    setEditingAluno(null);
-  };
-
-  const handleDeleteAluno = (id: string) => {
-    // Optimistic update
-    setLocalAlunos((prev) => {
-      const base = prev.length > 0 ? prev : alunos;
-      return base.filter((a) => a.id !== id);
-    });
-    
-    // API call
-    deleteAlunoMutation.mutate(id);
+  const getStatusBadge = (status: string | null) => {
+    const normalizedStatus = (status || 'INDEFINIDO').toUpperCase();
+    if (normalizedStatus === 'ADIMPLENTE') {
+      return <Badge variant="default" className="bg-success">Adimplente</Badge>;
+    }
+    if (normalizedStatus === 'INADIMPLENTE') {
+      return <Badge variant="destructive">Inadimplente</Badge>;
+    }
+    return <Badge variant="outline">Indefinido</Badge>;
   };
 
   if (isLoading) {
     return (
       <>
-        <Header title="Alunos / Pacientes" description="Gerencie os alunos e pacientes da clínica" />
+        <Header title="Checagem de Alunos" description="Verifique a situação dos alunos" />
         <PageLoading text="Carregando alunos..." />
       </>
     );
@@ -169,7 +182,7 @@ export default function Students() {
   if (isError) {
     return (
       <>
-        <Header title="Alunos / Pacientes" description="Gerencie os alunos e pacientes da clínica" />
+        <Header title="Checagem de Alunos" description="Verifique a situação dos alunos" />
         <div className="page-container">
           <PageError onRetry={() => refetch()} />
         </div>
@@ -180,439 +193,676 @@ export default function Students() {
   return (
     <>
       <Header
-        title="Alunos / Pacientes"
-        description="Gerencie os alunos e pacientes da clínica"
+        title="Checagem de Alunos"
+        description="Verifique a situação dos alunos e seus plantões"
       />
 
       <div className="page-container">
-        {/* Actions Bar */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Filters */}
+        <div className="space-y-4 mb-6">
+          {/* Search Bar */}
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por nome, email ou CPF..."
+              placeholder="Buscar por nome, email ou matrícula..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9"
             />
           </div>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Novo Aluno
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Cadastrar Novo Aluno</DialogTitle>
-                <DialogDescription>
-                  Preencha os dados do novo aluno. Todos os campos são editáveis após o cadastro.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="nome">Nome Completo</Label>
-                    <Input
-                      id="nome"
-                      value={newAluno.nome || ''}
-                      onChange={(e) => setNewAluno({ ...newAluno, nome: e.target.value })}
-                      placeholder="Nome do aluno"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cpf">CPF</Label>
-                    <MaskedInput
-                      id="cpf"
-                      maskType="cpf"
-                      value={newAluno.cpf || ''}
-                      onChange={(value) => setNewAluno({ ...newAluno, cpf: value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={newAluno.email || ''}
-                      onChange={(e) => setNewAluno({ ...newAluno, email: e.target.value })}
-                      placeholder="email@exemplo.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="telefone">Telefone</Label>
-                    <MaskedInput
-                      id="telefone"
-                      maskType="phone"
-                      value={newAluno.telefone || ''}
-                      onChange={(value) => setNewAluno({ ...newAluno, telefone: value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="data_nascimento">Data de Nascimento</Label>
-                    <MaskedInput
-                      id="data_nascimento"
-                      maskType="date"
-                      value={newAluno.data_nascimento || ''}
-                      onChange={(value) => setNewAluno({ ...newAluno, data_nascimento: value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={newAluno.status}
-                      onValueChange={(value) => setNewAluno({ ...newAluno, status: value as Aluno['status'] })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Ativo">Ativo</SelectItem>
-                        <SelectItem value="Inativo">Inativo</SelectItem>
-                        <SelectItem value="Em Onboarding">Em Onboarding</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+          {/* Add Student Button - Manual Registration */}
+          <Button 
+            onClick={() => setIsRegisterOpen(true)}
+            className="w-full sm:w-auto gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Registrar Aluno
+          </Button>
 
-                {/* Vendedor and Sale Info */}
-                <div className="border-t pt-4 mt-2">
-                  <h4 className="font-medium mb-3 text-foreground">Informações de Venda</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="vendedor">Vendedor</Label>
-                      <Select
-                        value={newAluno.vendedor}
-                        onValueChange={(value) => setNewAluno({ ...newAluno, vendedor: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o vendedor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VENDEDORES.map((vendedor) => (
-                            <SelectItem key={vendedor} value={vendedor}>
-                              {vendedor}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="valor_venda">Valor de Venda (R$)</Label>
-                      <MaskedInput
-                        id="valor_venda"
-                        maskType="currency"
-                        value={newAluno.valor_venda || ''}
-                        onChange={(value) => setNewAluno({ ...newAluno, valor_venda: value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="parcelas">Parcelas</Label>
-                      <Select
-                        value={newAluno.parcelas}
-                        onValueChange={(value) => setNewAluno({ ...newAluno, parcelas: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PARCELAS_OPTIONS.map((parcela) => (
-                            <SelectItem key={parcela} value={parcela}>
-                              {parcela === '0' ? 'À vista' : `${parcela}x`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="pos_graduacao">Aluno Pós-Graduação</Label>
-                      <div className="flex items-center gap-3 h-10">
-                        <Switch
-                          id="pos_graduacao"
-                          checked={newAluno.pos_graduacao || false}
-                          onCheckedChange={(checked) => setNewAluno({ ...newAluno, pos_graduacao: checked })}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {newAluno.pos_graduacao ? 'Sim' : 'Não'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          {/* Filters Row */}
+          <div className="flex flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Status:</span>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="ADIMPLENTE">Adimplente</SelectItem>
+                  <SelectItem value="INADIMPLENTE">Inadimplente</SelectItem>
+                  <SelectItem value="INDEFINIDO">Indefinido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="endereco">Endereço</Label>
-                  <Input
-                    id="endereco"
-                    value={newAluno.endereco || ''}
-                    onChange={(e) => setNewAluno({ ...newAluno, endereco: e.target.value })}
-                    placeholder="Endereço completo"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="observacoes">Observações</Label>
-                  <Textarea
-                    id="observacoes"
-                    value={newAluno.observacoes || ''}
-                    onChange={(e) => setNewAluno({ ...newAluno, observacoes: e.target.value })}
-                    placeholder="Observações sobre o aluno"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleAddAluno} disabled={createAlunoMutation.isPending}>
-                  {createAlunoMutation.isPending ? 'Cadastrando...' : 'Cadastrar'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Ordenar por:</span>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name-asc">Nome (A-Z)</SelectItem>
+                  <SelectItem value="name-desc">Nome (Z-A)</SelectItem>
+                  <SelectItem value="plantoes-desc">Mais Plantões</SelectItem>
+                  <SelectItem value="plantoes-asc">Menos Plantões</SelectItem>
+                  <SelectItem value="tentativas-desc">Mais Tentativas</SelectItem>
+                  <SelectItem value="tentativas-asc">Menos Tentativas</SelectItem>
+                  <SelectItem value="aulas-desc">Maior % Aulas</SelectItem>
+                  <SelectItem value="aulas-asc">Menor % Aulas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        {/* Summary */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Total de Alunos</p>
-            <p className="text-2xl font-bold text-foreground">{mergedAlunos.length}</p>
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Alunos Ativos</p>
-            <p className="text-2xl font-bold text-success">
-              {mergedAlunos.filter((a) => a.status === 'Ativo').length}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Em Onboarding</p>
-            <p className="text-2xl font-bold text-warning">
-              {mergedAlunos.filter((a) => a.status === 'Em Onboarding').length}
-            </p>
+            <div className="ml-auto text-sm text-muted-foreground">
+              {filteredAndSortedAlunos.length} aluno{filteredAndSortedAlunos.length !== 1 ? 's' : ''} encontrado{filteredAndSortedAlunos.length !== 1 ? 's' : ''}
+            </div>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Email</th>
-                  <th>Telefone</th>
-                  <th>CPF</th>
-                  <th>Vendedor</th>
-                  <th>Valor</th>
-                  <th>Parcelas</th>
-                  <th>Pós</th>
-                  <th>Status</th>
-                  <th className="text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAlunos.map((aluno) => (
-                  <tr key={aluno.id}>
-                    <td>
-                      <EditableCell
-                        value={aluno.nome}
-                        onChange={(v) => handleUpdateField(aluno.id, 'nome', v)}
-                      />
-                    </td>
-                    <td>
-                      <EditableCell
-                        value={aluno.email}
-                        onChange={(v) => handleUpdateField(aluno.id, 'email', v)}
-                      />
-                    </td>
-                    <td>
-                      <EditableCell
-                        value={aluno.telefone}
-                        onChange={(v) => handleUpdateField(aluno.id, 'telefone', v)}
-                        type="phone"
-                      />
-                    </td>
-                    <td>
-                      <EditableCell
-                        value={aluno.cpf}
-                        onChange={(v) => handleUpdateField(aluno.id, 'cpf', v)}
-                        type="cpf"
-                      />
-                    </td>
-                    <td>
-                      <Select
-                        value={aluno.vendedor}
-                        onValueChange={(v) => handleUpdateField(aluno.id, 'vendedor', v)}
-                      >
-                        <SelectTrigger className="h-8 w-[120px]">
-                          <SelectValue placeholder="Vendedor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VENDEDORES.map((vendedor) => (
-                            <SelectItem key={vendedor} value={vendedor}>
-                              {vendedor}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="text-foreground font-medium">
-                      {formatCurrency(aluno.valor_venda)}
-                    </td>
-                    <td className="text-center">
-                      {aluno.parcelas === '0' ? 'À vista' : `${aluno.parcelas}x`}
-                    </td>
-                    <td className="text-center">
-                      {aluno.pos_graduacao && (
-                        <GraduationCap className="h-4 w-4 text-primary mx-auto" />
+        {/* Cards Grid */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {paginatedAlunos.map((aluno: PfAlunos) => {
+            const tagColorClass = (() => {
+              switch (aluno.tag) {
+                case 'verde': return 'border-green-500 bg-green-50 dark:bg-green-900/10';
+                case 'amarelo': return 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10';
+                case 'vermelho': return 'border-red-500 bg-red-50 dark:bg-red-900/10';
+                default: return '';
+              }
+            })();
+
+            return (
+              <Card
+                key={aluno.matricula}
+                className={`cursor-pointer hover:shadow-lg transition-shadow ${tagColorClass}`}
+                onClick={() => setSelectedAluno(aluno)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        {aluno.nome}
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        Mat: {aluno.matricula}
+                      </CardDescription>
+                      {(aluno.cidade || aluno.cidade_estado) && (
+                        <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          {aluno.cidade || aluno.cidade_estado}
+                        </div>
                       )}
-                    </td>
-                    <td>
-                      <Select
-                        value={aluno.status}
-                        onValueChange={(v) => handleUpdateField(aluno.id, 'status', v)}
-                      >
-                        <SelectTrigger className="h-8 w-[130px]">
-                          <StatusBadge status={aluno.status} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Ativo">Ativo</SelectItem>
-                          <SelectItem value="Inativo">Inativo</SelectItem>
-                          <SelectItem value="Em Onboarding">Em Onboarding</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingAluno(aluno)}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteAluno(aluno.id)}
-                          disabled={deleteAlunoMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                    </div>
+                    {getStatusIcon(aluno.status_financeiro)}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Status:</span>
+                      {getStatusBadge(aluno.status_financeiro)}
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Plantões:</span>
+                      <span className="font-bold">{aluno.qtd_plantoes || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Tentativas:</span>
+                      <span className="font-medium text-amber-600 dark:text-amber-400">{aluno.qtd_tentativas || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Parc. Pagas:</span>
+                      <span className="font-medium text-success">{aluno.parcelas_pagas || 0}</span>
+                    </div>
+                    {aluno.parcelas_atraso && aluno.parcelas_atraso > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Parc. Atraso:</span>
+                        <span className="font-medium text-destructive">{aluno.parcelas_atraso}</span>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
-        {/* Edit Dialog */}
-        <Dialog open={!!editingAluno} onOpenChange={(open) => !open && setEditingAluno(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        {paginatedAlunos.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Nenhum aluno encontrado</p>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <div className="flex items-center gap-2">
+              {(() => {
+                const maxButtons = 5;
+                const pages: number[] = [];
+
+                if (totalPages <= maxButtons) {
+                  // Show all pages
+                  for (let i = 1; i <= totalPages; i++) {
+                    pages.push(i);
+                  }
+                } else {
+                  // Calculate range around current page
+                  let start = Math.max(1, currentPage - 2);
+                  let end = Math.min(totalPages, currentPage + 2);
+
+                  // Adjust if we're near the start
+                  if (currentPage <= 3) {
+                    end = maxButtons;
+                  }
+
+                  // Adjust if we're near the end
+                  if (currentPage >= totalPages - 2) {
+                    start = totalPages - maxButtons + 1;
+                  }
+
+                  for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                  }
+                }
+
+                return pages.map(page => (
+                  <Button
+                    key={page}
+                    variant={page === currentPage ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setCurrentPage(page)}
+                    className="w-10"
+                  >
+                    {page}
+                  </Button>
+                ));
+              })()}
+            </div>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Detail Modal */}
+        <Dialog open={!!selectedAluno} onOpenChange={(open) => !open && setSelectedAluno(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Editar Aluno</DialogTitle>
-              <DialogDescription>
-                Edite os dados do aluno.
-              </DialogDescription>
+              <DialogTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                {selectedAluno?.nome}
+              </DialogTitle>
             </DialogHeader>
-            {editingAluno && (
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Nome Completo</Label>
-                    <Input
-                      value={editingAluno.nome}
-                      onChange={(e) => setEditingAluno({ ...editingAluno, nome: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>CPF</Label>
-                    <MaskedInput
-                      maskType="cpf"
-                      value={editingAluno.cpf}
-                      onChange={(value) => setEditingAluno({ ...editingAluno, cpf: value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      value={editingAluno.email}
-                      onChange={(e) => setEditingAluno({ ...editingAluno, email: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Telefone</Label>
-                    <MaskedInput
-                      maskType="phone"
-                      value={editingAluno.telefone}
-                      onChange={(value) => setEditingAluno({ ...editingAluno, telefone: value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Data de Nascimento</Label>
-                    <MaskedInput
-                      maskType="date"
-                      value={editingAluno.data_nascimento}
-                      onChange={(value) => setEditingAluno({ ...editingAluno, data_nascimento: value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select
-                      value={editingAluno.status}
-                      onValueChange={(value) => setEditingAluno({ ...editingAluno, status: value as Aluno['status'] })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Ativo">Ativo</SelectItem>
-                        <SelectItem value="Inativo">Inativo</SelectItem>
-                        <SelectItem value="Em Onboarding">Em Onboarding</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Endereço</Label>
-                  <Input
-                    value={editingAluno.endereco}
-                    onChange={(e) => setEditingAluno({ ...editingAluno, endereco: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Observações</Label>
-                  <Textarea
-                    value={editingAluno.observacoes}
-                    onChange={(e) => setEditingAluno({ ...editingAluno, observacoes: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditingAluno(null)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleEditAluno}>Salvar</Button>
-            </DialogFooter>
+            {selectedAluno && <StudentDetailsContent aluno={selectedAluno} onClose={() => setSelectedAluno(null)} onUpdate={refetch} />}
           </DialogContent>
         </Dialog>
       </div>
+
+        {/* Manual Registration Dialog */}
+        <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Registrar Novo Aluno</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="matricula" className="text-right text-sm font-medium">
+                  Matrícula
+                </label>
+                <Input
+                  id="matricula"
+                  value={newStudent.matricula}
+                  onChange={(e) => handleRegisterChange('matricula', e.target.value)}
+                  className="col-span-3"
+                  placeholder="Ex: 12345"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="tipo" className="text-right text-sm font-medium">
+                  Tipo
+                </label>
+                <Select
+                  value={newStudent.tipoMatricula}
+                  onValueChange={(value) => handleRegisterChange('tipoMatricula', value)}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SEI">SEI</SelectItem>
+                    <SelectItem value="Memberkit">Memberkit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="nome" className="text-right text-sm font-medium">
+                  Nome
+                </label>
+                <Input
+                  id="nome"
+                  value={newStudent.nome}
+                  onChange={(e) => handleRegisterChange('nome', e.target.value)}
+                  className="col-span-3"
+                  placeholder="Nome completo"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="telefone" className="text-right text-sm font-medium">
+                  Telefone
+                </label>
+                <Input
+                  id="telefone"
+                  value={newStudent.telefone}
+                  onChange={(e) => handleRegisterChange('telefone', e.target.value)}
+                  className="col-span-3"
+                  placeholder="(00) 00000-0000"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="email" className="text-right text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  value={newStudent.email}
+                  onChange={(e) => handleRegisterChange('email', e.target.value)}
+                  className="col-span-3"
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="turma" className="text-right text-sm font-medium">
+                  Turma
+                </label>
+                <Select
+                  value={newStudent.turma}
+                  onValueChange={(value) => handleRegisterChange('turma', value)}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecione a turma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Turma 1</SelectItem>
+                    <SelectItem value="2">Turma 2</SelectItem>
+                    <SelectItem value="3">Turma 3</SelectItem>
+                    <SelectItem value="4">Turma 4</SelectItem>
+                    <SelectItem value="5">Turma 5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="cidade" className="text-right text-sm font-medium">
+                  Cidade
+                </label>
+                <Input
+                  id="cidade"
+                  value={newStudent.cidade}
+                  onChange={(e) => handleRegisterChange('cidade', e.target.value)}
+                  className="col-span-3"
+                  placeholder="Cidade"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+               <Button variant="outline" onClick={() => setIsRegisterOpen(false)}>Cancelar</Button>
+               <Button onClick={handleRegisterSubmit} disabled={createAluno.isPending}>
+                 {createAluno.isPending ? 'Registrando...' : 'Registrar'}
+               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
     </>
+  );
+}
+
+// Student Details Component with Tabs
+function StudentDetailsContent({ aluno, onClose, onUpdate }: { aluno: PfAlunos, onClose: () => void, onUpdate: () => void }) {
+  const { data: tentativas = [] } = useTentativas({ matricula: aluno.matricula });
+  const { data: plantoes = [] } = usePlantoes();
+  const { data: afterRecords = [] } = useAfter({ matricula: aluno.matricula });
+
+  const studentPlantoes = plantoes.filter(p => p.matricula === aluno.matricula);
+
+  // Calculate last shift date
+  const lastShiftDate = studentPlantoes.length > 0
+    ? studentPlantoes.reduce((latest, current) => {
+      if (!latest.data_plantao) return current;
+      if (!current.data_plantao) return latest;
+
+      const parseDate = (dateStr: string) => {
+        const [day, month, year] = dateStr.split('/');
+        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      };
+
+      return parseDate(current.data_plantao) > parseDate(latest.data_plantao) ? current : latest;
+    }).data_plantao
+    : null;
+
+  const getStatusBadge = (status: string | null) => {
+    const normalizedStatus = (status || 'INDEFINIDO').toUpperCase();
+    if (normalizedStatus === 'ADIMPLENTE') {
+      return <Badge variant="default" className="bg-success">Adimplente</Badge>;
+    }
+    if (normalizedStatus === 'INADIMPLENTE') {
+      return <Badge variant="destructive">Inadimplente</Badge>;
+    }
+    return <Badge variant="secondary">Indefinido</Badge>;
+  };
+
+  const updateFieldMutation = useUpdateAlunoField();
+  const [tempTag, setTempTag] = useState(aluno.tag || 'null');
+
+  const handleSaveTag = async () => {
+    try {
+      await updateFieldMutation.mutateAsync({
+        id: aluno.matricula,
+        field: 'tag',
+        value: tempTag === 'null' ? null : tempTag
+      });
+      onUpdate();
+    } catch (error) {
+      console.error('Error updating tag:', error);
+    }
+  };
+
+
+
+  return (
+    <Tabs defaultValue="dados" className="mt-4">
+      <TabsList className="grid w-full grid-cols-2">
+        <TabsTrigger value="dados">Dados Gerais</TabsTrigger>
+        <TabsTrigger value="plantoes">Histórico de Plantões</TabsTrigger>
+      </TabsList>
+
+      {/* Tab 1: General Data */}
+      <TabsContent value="dados" className="space-y-4">
+        {/* Location */}
+        {/* Location & Tag */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* Location */}
+          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+            <MapPin className="h-4 w-4 text-primary" />
+            <div>
+              <span className="text-sm text-muted-foreground">Cidade/Estado:</span>
+              <p className="font-medium">{aluno.cidade || aluno.cidade_estado || '-'}</p>
+            </div>
+          </div>
+
+          {/* Tag Selector */}
+          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+            <div className="w-full">
+              <span className="text-sm text-muted-foreground mb-1 block">Classificação (Tag):</span>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={tempTag}
+                  onValueChange={setTempTag}
+                >
+                  <SelectTrigger className="w-full h-8">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="null">Nenhuma</SelectItem>
+                    <SelectItem value="verde" className="text-green-600 font-medium">Bom (Verde)</SelectItem>
+                    <SelectItem value="amarelo" className="text-yellow-600 font-medium">Mediano (Amarelo)</SelectItem>
+                    <SelectItem value="vermelho" className="text-red-600 font-medium">Ruim (Vermelho)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 shrink-0"
+                  onClick={handleSaveTag}
+                  title="Salvar Tag"
+                >
+                  <Check className="h-4 w-4 text-green-600" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Basic Info */}
+        <div>
+          <h4 className="font-semibold mb-3">Dados Pessoais</h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-muted-foreground">Matrícula:</span>
+              <p className="font-mono">{aluno.matricula}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Email:</span>
+              <p>{aluno.email || '-'}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Telefone:</span>
+              <p>{aluno.telefone || '-'}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Turma:</span>
+              <p>{aluno.turma || '-'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Financial Status */}
+        <div className="border-t pt-4">
+          <h4 className="font-semibold mb-3 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Situação Financeira
+          </h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-muted-foreground">Status:</span>
+              <div className="mt-1">{getStatusBadge(aluno.status_financeiro)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Parcelas Pagas:</span>
+              <p className="font-medium text-success">{aluno.parcelas_pagas || 0}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Parcelas em Atraso:</span>
+              <p className="font-medium text-destructive">{aluno.parcelas_atraso || 0}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Parcelas em Aberto:</span>
+              <p className="font-medium text-warning">{aluno.parcelas_aberto || 0}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Class Attendance */}
+        <div className="border-t pt-4">
+          <h4 className="font-semibold mb-3 flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Frequência de Aulas
+          </h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-muted-foreground">Aulas Assistidas:</span>
+              <p className="font-medium">{aluno.aulas_assistidas || 0}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">% Total de Aulas:</span>
+              <p className="font-medium">{((aluno.aulas_total_porcentagem || 0) * 100).toFixed(2)}%</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Dias desde 1ª Aula:</span>
+              <p>{aluno.dias_desde_primeira_aula || '-'}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Dias desde Última Aula:</span>
+              <p>{aluno.dias_desde_ultima_aula || '-'}</p>
+            </div>
+          </div>
+        </div>
+
+        {aluno.criado_em && (
+          <div className="border-t pt-4">
+            <div className="text-xs text-muted-foreground">
+              Cadastrado em: {aluno.criado_em}
+            </div>
+          </div>
+        )}
+      </TabsContent>
+
+      {/* Tab 2: Shift History */}
+      <TabsContent value="plantoes" className="space-y-4">
+        {/* Summary Stats */}
+        <div>
+          <h4 className="font-semibold mb-3">Resumo de Plantões</h4>
+          <div className="grid grid-cols-4 gap-3 text-sm">
+            <div>
+              <span className="text-muted-foreground">Total de Plantões:</span>
+              <p className="font-bold text-lg text-primary">{studentPlantoes.length}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Tentativas:</span>
+              <p className="font-bold text-lg text-amber-600 dark:text-amber-400">{tentativas.length}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Faltas:</span>
+              <p className="font-bold text-lg text-destructive">
+                {afterRecords.filter(r => r.comparecimento === false).length}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Último Plantão:</span>
+              <p className="font-medium">{lastShiftDate || 'Nenhum'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Procedimentos Realizados */}
+        {(() => {
+          const procedureTotals = {
+            cvc: afterRecords.filter(r => r.cvc).length,
+            pai: afterRecords.filter(r => r.pai).length,
+            cardioversao: afterRecords.filter(r => r.cardioversao).length,
+            iot: afterRecords.filter(r => r.iot).length,
+            dreno: afterRecords.filter(r => r.dreno).length,
+            sne_svd: afterRecords.filter(r => r.sne_svd).length,
+            protocolos_avc: afterRecords.filter(r => r.protocolos_avc).length,
+            paracentese: afterRecords.filter(r => r.paracentese).length,
+            prona: afterRecords.filter(r => r.prona).length,
+            marca_passo: afterRecords.filter(r => r.marca_passo).length,
+            extubacao: afterRecords.filter(r => r.extubacao).length,
+            decanulacao: afterRecords.filter(r => r.decanulacao).length,
+            retirada_dreno: afterRecords.filter(r => r.retirada_dreno).length,
+            toracocentese: afterRecords.filter(r => r.toracocentese).length,
+            traqueostomia: afterRecords.filter(r => r.traqueostomia).length,
+            puncao_liquorica: afterRecords.filter(r => r.puncao_liquorica).length,
+            cateter_hemodialise: afterRecords.filter(r => r.cateter_hemodialise).length,
+            protocolo_me: afterRecords.filter(r => r.protocolo_me).length,
+          };
+
+          return (
+            <div className="border-t pt-4">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                <Heart className="h-4 w-4 text-destructive" />
+                Procedimentos Realizados
+              </h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">CVC:</span>
+                  <p className="font-medium">{procedureTotals.cvc}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">PAI:</span>
+                  <p className="font-medium">{procedureTotals.pai}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cardioversão:</span>
+                  <p className="font-medium">{procedureTotals.cardioversao}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">IOT:</span>
+                  <p className="font-medium">{procedureTotals.iot}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Dreno:</span>
+                  <p className="font-medium">{procedureTotals.dreno}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">SNE/SVD:</span>
+                  <p className="font-medium">{procedureTotals.sne_svd}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Protocolos AVC:</span>
+                  <p className="font-medium">{procedureTotals.protocolos_avc}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Paracentese:</span>
+                  <p className="font-medium">{procedureTotals.paracentese}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Prona:</span>
+                  <p className="font-medium">{procedureTotals.prona}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Marca-passo:</span>
+                  <p className="font-medium">{procedureTotals.marca_passo}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Extubação:</span>
+                  <p className="font-medium">{procedureTotals.extubacao}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Decanulação:</span>
+                  <p className="font-medium">{procedureTotals.decanulacao}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Retirada de Dreno:</span>
+                  <p className="font-medium">{procedureTotals.retirada_dreno}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Toracocentese:</span>
+                  <p className="font-medium">{procedureTotals.toracocentese}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Traqueostomia:</span>
+                  <p className="font-medium">{procedureTotals.traqueostomia}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Punção Liquórica:</span>
+                  <p className="font-medium">{procedureTotals.puncao_liquorica}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cateter Hemodiálise:</span>
+                  <p className="font-medium">{procedureTotals.cateter_hemodialise}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Protocolo ME:</span>
+                  <p className="font-medium">{procedureTotals.protocolo_me}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </TabsContent>
+
+      <div className="flex justify-end pt-4 border-t">
+        <Button onClick={onClose}>Fechar</Button>
+      </div>
+    </Tabs>
   );
 }

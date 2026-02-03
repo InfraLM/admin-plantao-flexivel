@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authAPI } from '@/lib/api';
 
-export type UserRole = 'admin' | 'comercial';
+export type UserRole = 'admin' | 'comercial' | 'analista';
 
 export interface AuthUser {
   username: string;

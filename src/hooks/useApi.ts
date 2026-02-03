@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { alunosAPI, turmasAPI, financeiroAPI, alunoTurmaAPI } from '@/lib/api';
+import { alunosAPI, plantoesAPI, tentativasAPI, afterAPI, feedbackAPI } from '@/lib/api';
 import { toast } from 'sonner';
 
 // Debug logging
@@ -7,7 +7,7 @@ console.log('🪝 [useApi] Hooks carregados');
 console.log('🪝 [useApi] Todas as requisições vão para o backend PostgreSQL');
 
 // ============ ALUNOS HOOKS ============
-export function useAlunos(params?: { search?: string; status?: string; vendedor?: string }) {
+export function useAlunos(params?: { search?: string }) {
   return useQuery({
     queryKey: ['alunos', params],
     queryFn: () => alunosAPI.getAll(params),
@@ -27,7 +27,7 @@ export function useAluno(id: string) {
 
 export function useCreateAluno() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: any) => alunosAPI.create(data),
     onSuccess: () => {
@@ -43,7 +43,7 @@ export function useCreateAluno() {
 
 export function useUpdateAluno() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => alunosAPI.update(id, data),
     onSuccess: () => {
@@ -59,9 +59,9 @@ export function useUpdateAluno() {
 
 export function useUpdateAlunoField() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, field, value }: { id: string; field: string; value: any }) => 
+    mutationFn: ({ id, field, value }: { id: string; field: string; value: any }) =>
       alunosAPI.updateField(id, field, value),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alunos'] });
@@ -76,7 +76,7 @@ export function useUpdateAlunoField() {
 
 export function useDeleteAluno() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) => alunosAPI.delete(id),
     onSuccess: () => {
@@ -90,234 +90,181 @@ export function useDeleteAluno() {
   });
 }
 
-// ============ TURMAS HOOKS ============
-export function useTurmas(params?: { search?: string; status?: string }) {
+// ============ PLANTOES HOOKS ============
+export function usePlantoes(params?: { status?: string; matricula?: string; data_plantao?: string }) {
   return useQuery({
-    queryKey: ['turmas', params],
-    queryFn: () => turmasAPI.getAll(params),
+    queryKey: ['plantoes', params],
+    queryFn: () => plantoesAPI.getAll(params),
     staleTime: 1000 * 60 * 5,
     retry: 2,
   });
 }
 
-export function useTurma(id: string) {
-  return useQuery({
-    queryKey: ['turmas', id],
-    queryFn: () => turmasAPI.getById(id),
-    enabled: !!id,
-    staleTime: 1000 * 60 * 5,
-  });
-}
-
-export function useTurmaAlunos(id: string) {
-  return useQuery({
-    queryKey: ['turmas', id, 'alunos'],
-    queryFn: () => turmasAPI.getAlunos(id),
-    enabled: !!id,
-    staleTime: 1000 * 60 * 3,
-  });
-}
-
-export function useTurmaFinanceiro(id: string) {
-  return useQuery({
-    queryKey: ['turmas', id, 'financeiro'],
-    queryFn: () => turmasAPI.getFinanceiro(id),
-    enabled: !!id,
-    staleTime: 1000 * 60 * 3,
-  });
-}
-
-export function useCreateTurma() {
+export function useCreatePlantao() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: (data: any) => turmasAPI.create(data),
+    mutationFn: (data: { matricula: string; data_plantao: string; status?: string }) => plantoesAPI.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['turmas'] });
-      toast.success('Turma criada com sucesso');
+      queryClient.invalidateQueries({ queryKey: ['plantoes'] });
+      queryClient.invalidateQueries({ queryKey: ['alunos'] }); // Update student counters
+      toast.success('Plantão marcado com sucesso');
     },
     onError: (error: Error) => {
-      console.error('[useCreateTurma] Erro:', error);
-      toast.error(`Erro ao criar turma: ${error.message}`);
+      console.error('[useCreatePlantao] Erro:', error);
+      toast.error(`Erro ao marcar plantão: ${error.message}`);
     },
   });
 }
 
-export function useUpdateTurma() {
+export function useUpdatePlantaoStatus() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => turmasAPI.update(id, data),
+    mutationFn: ({ matricula, data_plantao, status }: { matricula: string; data_plantao: string; status: string }) =>
+      plantoesAPI.updateStatus(matricula, data_plantao, status),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['turmas'] });
-      toast.success('Turma atualizada com sucesso');
+      queryClient.invalidateQueries({ queryKey: ['plantoes'] });
+      toast.success('Status do plantão atualizado');
     },
     onError: (error: Error) => {
-      console.error('[useUpdateTurma] Erro:', error);
-      toast.error(`Erro ao atualizar turma: ${error.message}`);
+      console.error('[useUpdatePlantaoStatus] Erro:', error);
+      toast.error(`Erro ao atualizar status: ${error.message}`);
     },
   });
 }
 
-export function useUpdateTurmaField() {
+export function useDeletePlantao() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, field, value }: { id: string; field: string; value: any }) =>
-      turmasAPI.updateField(id, field, value),
+    mutationFn: ({ matricula, data_plantao }: { matricula: string; data_plantao: string }) =>
+      plantoesAPI.delete(matricula, data_plantao),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['turmas'] });
-      toast.success('Campo atualizado com sucesso');
+      queryClient.invalidateQueries({ queryKey: ['plantoes'] });
+      queryClient.invalidateQueries({ queryKey: ['alunos'] }); // Update student counters
+      toast.success('Plantão removido com sucesso');
     },
     onError: (error: Error) => {
-      console.error('[useUpdateTurmaField] Erro:', error);
-      toast.error(`Erro ao atualizar campo: ${error.message}`);
+      console.error('[useDeletePlantao] Erro:', error);
+      toast.error(`Erro ao remover plantão: ${error.message}`);
     },
   });
 }
 
-export function useDeleteTurma() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (id: string) => turmasAPI.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['turmas'] });
-      toast.success('Turma removida com sucesso');
-    },
-    onError: (error: Error) => {
-      console.error('[useDeleteTurma] Erro:', error);
-      toast.error(`Erro ao remover turma: ${error.message}`);
-    },
-  });
-}
-
-// ============ FINANCEIRO HOOKS ============
-export function useFinanceiro(params?: { search?: string; tipo?: string; turma_id?: string }) {
+// ============ TENTATIVAS HOOKS ============
+export function useTentativas(params?: { matricula?: string }) {
   return useQuery({
-    queryKey: ['financeiro', params],
-    queryFn: () => financeiroAPI.getAll(params),
+    queryKey: ['tentativas', params],
+    queryFn: () => tentativasAPI.getAll(params),
     staleTime: 1000 * 60 * 5,
     retry: 2,
   });
 }
 
-export function useFinanceiroResumo(params?: { turma_id?: string; data_inicio?: string; data_fim?: string }) {
+export function useCreateTentativa() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { matricula: string; data_possivel_plantao: string; data_que_conseguiu?: string }) => tentativasAPI.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tentativas'] });
+      queryClient.invalidateQueries({ queryKey: ['alunos'] }); // Update student counters
+      toast.success('Tentativa registrada com sucesso');
+    },
+    onError: (error: Error) => {
+      console.error('[useCreateTentativa] Erro:', error);
+      toast.error(`Erro ao registrar tentativa: ${error.message}`);
+    },
+  });
+}
+
+export function useDeleteTentativa() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ matricula, data_tentativa, data_possivel_plantao }: { matricula: string; data_tentativa: string; data_possivel_plantao: string }) =>
+      tentativasAPI.delete(matricula, data_tentativa, data_possivel_plantao),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tentativas'] });
+      queryClient.invalidateQueries({ queryKey: ['alunos'] });
+      toast.success('Tentativa removida com sucesso');
+    },
+    onError: (error: Error) => {
+      console.error('[useDeleteTentativa] Erro:', error);
+      toast.error(`Erro ao remover tentativa: ${error.message}`);
+    },
+  });
+}
+
+// ============ AFTER HOOKS ============
+export function useAfter(params?: { matricula?: string }) {
   return useQuery({
-    queryKey: ['financeiro', 'resumo', params],
-    queryFn: () => financeiroAPI.getResumo(params),
+    queryKey: ['after', params],
+    queryFn: () => afterAPI.getAll(params),
     staleTime: 1000 * 60 * 5,
     retry: 2,
   });
 }
 
-export function useCreateFinanceiro() {
+export function useCreateAfter() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: (data: any) => financeiroAPI.create(data),
+    mutationFn: (data: any) => afterAPI.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['financeiro'] });
-      toast.success('Registro financeiro criado com sucesso');
+      queryClient.invalidateQueries({ queryKey: ['after'] });
+      queryClient.invalidateQueries({ queryKey: ['plantoes'] });
+      toast.success('Registro criado e plantão marcado como realizado!');
     },
     onError: (error: Error) => {
-      console.error('[useCreateFinanceiro] Erro:', error);
+      console.error('[useCreateAfter] Erro:', error);
       toast.error(`Erro ao criar registro: ${error.message}`);
     },
   });
 }
 
-export function useUpdateFinanceiroField() {
+export function useUpdateAfter() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, field, value }: { id: string; field: string; value: any }) =>
-      financeiroAPI.updateField(id, field, value),
+    mutationFn: ({ matricula, data_plantao, data }: { matricula: string; data_plantao: string; data: any }) =>
+      afterAPI.update(matricula, data_plantao, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['financeiro'] });
-      toast.success('Campo atualizado com sucesso');
+      queryClient.invalidateQueries({ queryKey: ['after'] });
+      toast.success('Registro atualizado com sucesso');
     },
     onError: (error: Error) => {
-      console.error('[useUpdateFinanceiroField] Erro:', error);
-      toast.error(`Erro ao atualizar campo: ${error.message}`);
+      console.error('[useUpdateAfter] Erro:', error);
+      toast.error(`Erro ao atualizar registro: ${error.message}`);
     },
   });
 }
 
-export function useDeleteFinanceiro() {
+export function useDeleteAfter() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: (id: string) => financeiroAPI.delete(id),
+    mutationFn: ({ matricula, data_plantao }: { matricula: string; data_plantao: string }) =>
+      afterAPI.delete(matricula, data_plantao),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['financeiro'] });
+      queryClient.invalidateQueries({ queryKey: ['after'] });
+      queryClient.invalidateQueries({ queryKey: ['plantoes'] });
       toast.success('Registro removido com sucesso');
     },
     onError: (error: Error) => {
-      console.error('[useDeleteFinanceiro] Erro:', error);
+      console.error('[useDeleteAfter] Erro:', error);
       toast.error(`Erro ao remover registro: ${error.message}`);
     },
   });
 }
 
-// ============ ALUNO-TURMA HOOKS ============
-export function useAlunoTurma() {
+// ============ FEEDBACK HOOKS ============
+export function useFeedbacks() {
   return useQuery({
-    queryKey: ['aluno-turma'],
-    queryFn: () => alunoTurmaAPI.getAll(),
+    queryKey: ['feedback'],
+    queryFn: () => feedbackAPI.getAll(),
     staleTime: 1000 * 60 * 5,
     retry: 2,
-  });
-}
-
-export function useAlunoTurmaByAluno(alunoId: string) {
-  return useQuery({
-    queryKey: ['aluno-turma', 'aluno', alunoId],
-    queryFn: () => alunoTurmaAPI.getByAluno(alunoId),
-    enabled: !!alunoId,
-    staleTime: 1000 * 60 * 3,
-  });
-}
-
-export function useAlunoTurmaByTurma(turmaId: string) {
-  return useQuery({
-    queryKey: ['aluno-turma', 'turma', turmaId],
-    queryFn: () => alunoTurmaAPI.getByTurma(turmaId),
-    enabled: !!turmaId,
-    staleTime: 1000 * 60 * 3,
-  });
-}
-
-export function useCreateAlunoTurma() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (data: any) => alunoTurmaAPI.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['aluno-turma'] });
-      queryClient.invalidateQueries({ queryKey: ['turmas'] });
-      toast.success('Inscrição criada com sucesso');
-    },
-    onError: (error: Error) => {
-      console.error('[useCreateAlunoTurma] Erro:', error);
-      toast.error(`Erro ao criar inscrição: ${error.message}`);
-    },
-  });
-}
-
-export function useDeleteAlunoTurma() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (id: string) => alunoTurmaAPI.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['aluno-turma'] });
-      queryClient.invalidateQueries({ queryKey: ['turmas'] });
-      toast.success('Inscrição removida com sucesso');
-    },
-    onError: (error: Error) => {
-      console.error('[useDeleteAlunoTurma] Erro:', error);
-      toast.error(`Erro ao remover inscrição: ${error.message}`);
-    },
   });
 }

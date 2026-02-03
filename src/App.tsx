@@ -6,21 +6,24 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { VersionCheck } from "./components/VersionCheck";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
-import Schedule from "./pages/Schedule";
-import Financial from "./pages/Financial";
-import Onboarding from "./pages/Onboarding";
-import Reports from "./pages/Reports";
-import StudentRegistration from "./pages/StudentRegistration";
-import ScheduleReadOnly from "./pages/ScheduleReadOnly";
+import ShiftBooking from "./pages/ShiftBooking";
+import ShiftStatus from "./pages/ShiftStatus";
+import RegisterAttempt from "./pages/RegisterAttempt";
+import Analytics from "./pages/Analytics";
+import Calendar from "./pages/Calendar";
+import AfterPlantao from "./pages/AfterPlantao";
+import TentativasHistory from "./pages/TentativasHistory";
+import Feedback from "./pages/Feedback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <VersionCheck />
     <TooltipProvider>
       <AuthProvider>
         <Toaster />
@@ -30,20 +33,23 @@ const App = () => (
             {/* Login público */}
             <Route path="/login" element={<Login />} />
 
-            {/* Rotas Admin */}
+            {/* Rotas protegidas */}
+            {/* Rotas protegidas - ADMIN ONLY */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route element={<AppLayout><Dashboard /></AppLayout>} path="/" />
-              <Route element={<AppLayout><Students /></AppLayout>} path="/students" />
-              <Route element={<AppLayout><Schedule /></AppLayout>} path="/schedule" />
-              <Route element={<AppLayout><Financial /></AppLayout>} path="/financial" />
-              <Route element={<AppLayout><Onboarding /></AppLayout>} path="/onboarding" />
-              <Route element={<AppLayout><Reports /></AppLayout>} path="/reports" />
+              <Route element={<AppLayout><ShiftBooking /></AppLayout>} path="/booking" />
+              <Route element={<AppLayout><RegisterAttempt /></AppLayout>} path="/register-attempt" />
+              <Route element={<AppLayout><AfterPlantao /></AppLayout>} path="/after-plantao" />
             </Route>
 
-            {/* Rotas Comercial */}
-            <Route element={<ProtectedRoute allowedRoles={['comercial']} />}>
-              <Route element={<AppLayout><StudentRegistration /></AppLayout>} path="/cadastro" />
-              <Route element={<AppLayout><ScheduleReadOnly /></AppLayout>} path="/turmas" />
+            {/* Rotas protegidas - ADMIN + ANALISTA */}
+            <Route element={<ProtectedRoute allowedRoles={['admin', 'analista']} />}>
+              <Route element={<AppLayout><Students /></AppLayout>} path="/" />
+              <Route element={<AppLayout><Students /></AppLayout>} path="/students" />
+              <Route element={<AppLayout><ShiftStatus /></AppLayout>} path="/status" />
+              <Route element={<AppLayout><Calendar /></AppLayout>} path="/calendar" />
+              <Route element={<AppLayout><TentativasHistory /></AppLayout>} path="/tentativas" />
+              <Route element={<AppLayout><Feedback /></AppLayout>} path="/feedback" />
+              <Route element={<AppLayout><Analytics /></AppLayout>} path="/analytics" />
             </Route>
 
             {/* 404 */}

@@ -1,15 +1,4 @@
-// Types based on the PostgreSQL tables (all VARCHAR in DB)
-// 
-// TABLE MAPPING:
-// - Aluno        → ci_alunos_pacientes
-// - Turma        → ci_turmas_tratamentos
-// - AlunoTurma   → ci_aluno_turma
-// - Financeiro   → ci_financeiro
 
-/**
- * Represents a student/patient record
- * PostgreSQL table: ci_alunos_pacientes
- */
 export interface Aluno {
   id: string;
   nome: string;
@@ -27,11 +16,6 @@ export interface Aluno {
   parcelas: string; // '0' to '12'
   pos_graduacao: boolean;
 }
-
-/**
- * Represents a class/treatment group
- * PostgreSQL table: ci_turmas_tratamentos
- */
 export interface Turma {
   id: string;
   nome: string;

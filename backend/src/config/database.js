@@ -11,15 +11,15 @@ console.log('📋 Configurações carregadas:');
 console.log('   Host:     ', process.env.DB_HOST);
 console.log('   Port:     ', process.env.DB_PORT);
 console.log('   Database: ', process.env.DB_NAME);
-console.log('   User:     ', process.env.DB_USER || '(não definido)');
-console.log('   Password: ', process.env.DB_PASSWORD ? '****** (definida)' : '❌ (NÃO DEFINIDA)');
+console.log('   User:     ', process.env.DB_USER);
+console.log('   Password: ', process.env.DB_PASSWORD);
 console.log('='.repeat(70) + '\n');
 
 // Criar pool de conexões
 const pool = new Pool({
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT),
-  database: process.env.DB_NAME, 
+  database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   // Configurações do pool
@@ -64,11 +64,11 @@ pool.on('error', (err, client) => {
 
 const testConnection = async () => {
   console.log('🔍 [Database] Testando conexão com PostgreSQL...');
-  
+
   try {
     const client = await pool.connect();
     console.log('   ✅ Conexão estabelecida com sucesso!');
-    
+
     // Teste de query
     const result = await client.query(`
       SELECT 
@@ -77,7 +77,7 @@ const testConnection = async () => {
         current_user as user,
         version() as pg_version
     `);
-    
+
     const info = result.rows[0];
     console.log('   ✅ Query de teste executada!');
     console.log('   📊 Informações do servidor:');
@@ -85,7 +85,7 @@ const testConnection = async () => {
     console.log('      - Database ativo:  ', info.database);
     console.log('      - Usuário:         ', info.user);
     console.log('      - Versão PG:       ', info.pg_version.split(',')[0]);
-    
+
     // Verificar tabelas
     const tablesResult = await client.query(`
       SELECT table_name 
@@ -93,7 +93,7 @@ const testConnection = async () => {
       WHERE table_schema = 'public'
       ORDER BY table_name
     `);
-    
+
     if (tablesResult.rows.length > 0) {
       console.log('   ✅ Tabelas encontradas:', tablesResult.rows.length);
       tablesResult.rows.forEach((row, index) => {
@@ -102,17 +102,17 @@ const testConnection = async () => {
     } else {
       console.warn('   ⚠️  Nenhuma tabela encontrada no schema public');
     }
-    
+
     client.release();
     console.log('   ✅ Teste de conexão concluído com sucesso!\n');
     return true;
-    
+
   } catch (error) {
     console.error('   ❌ Falha no teste de conexão!');
     console.error('   📋 Detalhes do erro:');
     console.error('      - Mensagem:', error.message);
     console.error('      - Código:  ', error.code);
-    
+
     // Mensagens de ajuda específicas
     if (error.code === 'ECONNREFUSED') {
       console.error('\n   💡 SOLUÇÃO:');
@@ -137,11 +137,11 @@ const testConnection = async () => {
       console.error('      - Host incorreto ou inacessível');
       console.error('      - Problemas de rede');
     }
-    
+
     console.error('\n   📝 Stack trace:');
     console.error(error.stack);
     console.log('');
-    
+
     return false;
   }
 };
@@ -170,12 +170,11 @@ const query = async (text, params) => {
 // ============================================================================
 
 const TABLES = {
-  ALUNOS: 'ci_alunos_pacientes',
-  TURMAS: 'ci_turmas_tratamentos',
-  ALUNO_TURMA: 'ci_aluno_turma',
-  FINANCEIRO: 'ci_financeiro',
+  ALUNOS: 'lovable.pf_alunos',
+  PLANTOES: 'lovable.pf_plantoes',
+  TENTATIVAS: 'lovable.pf_tentativas',
+  AFTER: 'lovable.pf_after',
 };
-
 console.log('📋 [Database] Tabelas mapeadas:');
 Object.entries(TABLES).forEach(([key, value]) => {
   console.log(`   ${key.padEnd(15)} -> ${value}`);

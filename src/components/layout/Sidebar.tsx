@@ -2,39 +2,34 @@ import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Calendar, 
-  DollarSign, 
-  UserPlus, 
-  FileBarChart, 
+import {
+  Users,
+  Calendar as CalendarIcon,
+  CalendarDays,
   Activity,
   LogOut,
-  CalendarDays
+  ListChecks,
+  AlertTriangle,
+  ClipboardCheck,
+  History,
+  BarChart3
 } from 'lucide-react';
 
-// Navegação para Admin
-const adminNavigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Alunos', href: '/students', icon: Users },
-  { name: 'Turmas', href: '/schedule', icon: Calendar },
-  { name: 'Financeiro', href: '/financial', icon: DollarSign },
-  { name: 'Onboarding', href: '/onboarding', icon: UserPlus },
-  { name: 'Relatórios', href: '/reports', icon: FileBarChart },
-];
-
-// Navegação para Comercial
-const comercialNavigation = [
-  { name: 'Cadastrar Aluno', href: '/cadastro', icon: UserPlus },
-  { name: 'Ver Turmas', href: '/turmas', icon: CalendarDays },
+// Navegação única
+const navigation = [
+  { name: 'Checagem Alunos', href: '/students', icon: Users },
+  { name: 'Marcar Plantão', href: '/booking', icon: CalendarIcon },
+  { name: 'Registrar Tentativa', href: '/register-attempt', icon: AlertTriangle },
+  { name: 'Status Plantões', href: '/status', icon: ListChecks },
+  { name: 'Calendário', href: '/calendar', icon: CalendarDays },
+  { name: 'After Plantão', href: '/after-plantao', icon: ClipboardCheck },
+  { name: 'Tentativas', href: '/tentativas', icon: History },
+  { name: 'Feedbacks', href: '/feedback', icon: ClipboardCheck },
+  { name: 'Análise', href: '/analytics', icon: BarChart3 },
 ];
 
 export function Sidebar() {
   const { user, logout } = useAuth();
-
-  const navigation = user?.role === 'admin' ? adminNavigation : comercialNavigation;
-  const roleLabel = user?.role === 'admin' ? 'Administrador' : 'Comercial';
 
   const handleLogout = () => {
     logout();
@@ -53,21 +48,24 @@ export function Sidebar() {
             <span className="text-xs text-sidebar-foreground/60">Gestão</span>
           </div>
         </div>
-
         {/* User Info */}
         {user && (
           <div className="px-3 py-3 border-b border-sidebar-border">
             <div className="rounded-lg bg-sidebar-accent/50 p-3">
               <p className="text-xs text-sidebar-foreground/70">Logado como</p>
               <p className="text-sm font-medium text-sidebar-foreground capitalize">{user.username}</p>
-              <p className="text-xs text-sidebar-primary mt-1">{roleLabel}</p>
             </div>
           </div>
         )}
-
         {/* Navigation */}
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navigation.map((item) => (
+          {navigation.filter(item => {
+             // Se for analista, remove itens restritos
+             if (user?.role === 'analista') {
+               return !['Marcar Plantão', 'Registrar Tentativa', 'After Plantão'].includes(item.name);
+             }
+             return true;
+          }).map((item) => (
             <NavLink
               key={item.name}
               to={item.href}
@@ -88,9 +86,8 @@ export function Sidebar() {
 
         {/* Footer with Logout */}
         <div className="border-t border-sidebar-border p-4 space-y-3">
-          <Button 
-            variant="outline" 
-            className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:text-sidebar-foreground"
+          <Button
+            className="w-full justify-start gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
@@ -101,7 +98,7 @@ export function Sidebar() {
               Sistema de Gestão
             </p>
             <p className="text-xs font-medium text-sidebar-foreground">
-              Versão 1.0.0
+              Versão 2.6.1
             </p>
           </div>
         </div>

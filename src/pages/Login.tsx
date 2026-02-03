@@ -26,13 +26,8 @@ export default function Login() {
 
     if (result.success) {
       toast.success('Login realizado com sucesso!');
-      // Redirecionar baseado no role
-      const userRole = username.toLowerCase() === 'admin' ? 'admin' : 'comercial';
-      if (userRole === 'admin') {
-        navigate('/');
-      } else {
-        navigate('/cadastro');
-      }
+      // Redirecionar para home
+      navigate('/');
     } else {
       toast.error(result.error || 'Erro ao fazer login');
     }
@@ -52,7 +47,7 @@ export default function Login() {
           <div>
             <CardTitle className="text-2xl">Plantão Flexível</CardTitle>
             <CardDescription className="mt-2">
-              Sistema de Gestão - Acesse sua conta
+              Sistema de Gestão - Liberdade Médica
             </CardDescription>
           </div>
         </CardHeader>

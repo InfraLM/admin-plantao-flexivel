@@ -20,10 +20,6 @@ router.patch('/:id', alunosController.updateField);
 // DELETE /api/alunos/:id - Deletar aluno
 router.delete('/:id', alunosController.delete);
 
-// GET /api/alunos/status/:status - Buscar por status
-router.get('/status/:status', alunosController.getByStatus);
 
-// GET /api/alunos/vendedor/:vendedor - Buscar por vendedor
-router.get('/vendedor/:vendedor', alunosController.getByVendedor);
 
 module.exports = router;
